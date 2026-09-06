@@ -371,10 +371,10 @@ button:disabled {
     <button class="snap-btn" id="clearAllSnapBtn" style="background:#a22;color:white">Clear All</button>
 </div>
 <div id="loadingOverlay">
-    <div id="loadText">Loading remote tileset01.png...</div>
+    <div id="loadText">Loading local tileset01.png ...</div>
     <progress id="loadProgress" value="0" max="100" style="width:300px;margin-top:12px;"></progress>
     <div style="margin-top:12px;color:#aaa;font-size:12px;">
-        Tileset source: rolling-sky-ugc-web-mod-assets
+        tileset01.png must be in repository root folder
     </div>
 </div>
 <h2 style="position:fixed;left:300px;top:4px;margin:0;z-index:150;">Tile Map Editor</h2>
@@ -571,7 +571,7 @@ tilewidth=64
 tileheight=64
 orientation=orthogonal
 [tilesets]
-tileset=../tileset/tileset01.png,64,64,0,0
+tileset=tileset01.png,64,64,0,0
 [layer]
 type=Level
 data=
@@ -936,75 +936,67 @@ quickAddIdInput.addEventListener("input",()=>{
     updateQuickIdStatus();
 });
 
-// 页面启动：fetch远程tileset01.png
-async function initRemoteTileset(){
-    const url = "https://raw.githubusercontent.com/QAQA114514/rolling-sky-ugc-web-mod-assets/main/tileset01.png";
-    try{
-        loadText.textContent="Fetching remote tileset01.png ...";
-        const resp = await fetch(url);
-        if(!resp.ok){
-            throw new Error("http "+resp.status);
-        }
-        const blob = await resp.blob();
-        loadText.textContent="Decoding image...";
-        const ok = await loadPngSpriteSheet(blob);
-        if(!ok){
-            loadText.textContent="Tile image decode failed.";
-            return;
-        }else{
-            editorReady=true;loadingOverlay.style.display="none";
-            newMap();render();renderPalette();renderQuickBar();
-            undoStack.length=0;redoStack.length=0;updateUndoRedoButtonState();
-            updateQuickIdStatus();
-        }
-    }catch(err){
-        console.error(err);
-        loadText.textContent="Load tileset failed!\nCORS / network error.\nMust deploy on GitHub Pages.";
-    }
-}
-
-async function loadPngSpriteSheet(fileBlob){
-    try{
-        const bmp = await createImageBitmap(fileBlob);
-        const tw=TILE_SIZE,th=TILE_SIZE;
-        const colsCount=Math.floor(bmp.width/tw);
-        const rowsCount=Math.floor(bmp.height/th);
-        const totalTiles=colsCount*rowsCount;
-        if(totalTiles<=0){
-            alert("Image too small, cannot cut 64×64 tiles!");
-            bmp.close();
-            return false;
-        }
-        tileList = tileList.filter(t=>t.isEmptyTile);
-        tileIdMap={"00":0};
-        const offscreen = new OffscreenCanvas(tw,th);
-        const ctx = offscreen.getContext("2d");
-        const BATCH_SIZE = 200;
-        let seq=1;
-        for(let y=0;y<rowsCount;y++){
-            for(let x=0;x<colsCount;x++){
-                ctx.clearRect(0,0,tw,th);
-                ctx.drawImage(bmp, x*tw, y*th, tw, th, 0,0,tw,th);
-                const tileId=String(seq).padStart(2,"0");
-                const dataUrl = offscreen.toDataURL("image/png");
-                tileList.push({img:null,id:tileId,isEmptyTile:false,src:dataUrl});
-                tileIdMap[tileId] = tileList.length - 1;
-                seq++;
-                if(seq % BATCH_SIZE ===0){
-                    loadText.textContent=`Slicing tile spritesheet... ${seq} / ${totalTiles}`;
-                    loadProgress.value=Math.round((seq/totalTiles)*100);
-                    await new Promise(r=>setTimeout(r,0));
+async function initLocalTileset(){
+    return new Promise((resolve)=>{
+        loadText.textContent="Loading tileset01.png ...";
+        const img = new Image();
+        img.src = "./tileset01.png";
+        img.crossOrigin="anonymous";
+        img.onload = async ()=>{
+            const tw=TILE_SIZE,th=TILE_SIZE;
+            const colsCount=Math.floor(img.width/tw);
+            const rowsCount=Math.floor(img.height/th);
+            const totalTiles=colsCount*rowsCount;
+            if(totalTiles<=0){
+                alert("tileset01.png image too small!");
+                resolve(false);
+                return;
+            }
+            tileList = tileList.filter(t=>t.isEmptyTile);
+            tileIdMap={"00":0};
+            const offscreen = new OffscreenCanvas(tw,th);
+            const ctx = offscreen.getContext("2d");
+            const BATCH_SIZE = 200;
+            let seq=1;
+            for(let y=0;y<rowsCount;y++){
+                for(let x=0;x<colsCount;x++){
+                    ctx.clearRect(0,0,tw,th);
+                    ctx.drawImage(img, x*tw, y*th, tw, th, 0,0,tw,th);
+                    const tileId=String(seq).padStart(2,"0");
+                    const dataUrl = offscreen.toDataURL("image/png");
+                    tileList.push({img:null,id:tileId,isEmptyTile:false,src:dataUrl});
+                    tileIdMap[tileId] = tileList.length - 1;
+                    seq++;
+                    if(seq % BATCH_SIZE ===0){
+                        loadText.textContent=`Slicing tileset01.png ${seq}/${totalTiles}`;
+                        loadProgress.value=Math.round((seq/totalTiles)*100);
+                        await new Promise(r=>setTimeout(r,0));
+                    }
                 }
             }
-        }
-        bmp.close();
-        sortTilesById();
-        return true;
-    }catch(err){
-        console.error(err);
-        alert("createImageBitmap error");
-        return false;
-    }
+            sortTilesById();
+            resolve(true);
+        };
+        img.onerror = ()=>{
+            loadText.textContent="ERROR: Cannot load ./tileset01.png\nPut tileset01.png in repository ROOT!";
+            resolve(false);
+        };
+    });
+}
+
+async function startup(){
+    const ok = await initLocalTileset();
+    if(!ok) return;
+    editorReady=true;
+    loadingOverlay.style.display="none";
+    newMap();
+    render();
+    renderPalette();
+    renderQuickBar();
+    undoStack.length=0;
+    redoStack.length=0;
+    updateUndoRedoButtonState();
+    updateQuickIdStatus();
 }
 
 function expandMapUp(addCount){
@@ -1404,8 +1396,8 @@ renderQuickBar();
 updateUndoRedoButtonState();
 updateQuickIdStatus();
 
-// 页面加载自动拉取远程tileset
-initRemoteTileset();
+// 页面启动加载本仓库根目录tileset01.png
+startup();
 </script>
 </body>
 </html>
